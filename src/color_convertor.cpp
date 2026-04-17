@@ -3,382 +3,315 @@
 #include <fstream>
 #include <cstring>
 
-// ================= MATRIX SELECT =================
-
-static const float (*getRGB2YUV(ColorStandard s))[3]
-{
-    static ColorMatrixBT601 bt601;
-    static ColorMatrixBT709 bt709;
-    static ColorMatrixBT2020 bt2020;
-
-    switch (s)
-    {
-    case ColorStandard::BT601:
-        return bt601.rgb_to_yuv;
-    case ColorStandard::BT709:
-        return bt709.rgb_to_yuv;
-    case ColorStandard::BT2020:
-        return bt2020.rgb_to_yuv;
-    }
-    return bt601.rgb_to_yuv;
-}
-
-static const float (*getYUV2RGB(ColorStandard s))[3]
-{
-    static ColorMatrixBT601 bt601;
-    static ColorMatrixBT709 bt709;
-    static ColorMatrixBT2020 bt2020;
-
-    switch (s)
-    {
-    case ColorStandard::BT601:
-        return bt601.yuv_to_rgb;
-    case ColorStandard::BT709:
-        return bt709.yuv_to_rgb;
-    case ColorStandard::BT2020:
-        return bt2020.yuv_to_rgb;
-    }
-    return bt601.yuv_to_rgb;
-}
-
 // ================= PIXEL CONVERT =================
 
-YUVPixel ColorConvertor::rgb_to_yuv(const RGBPixel &rgb,
-                                    const ColorStandard &standard)
+YUVPixel ColorConvertor::rgb_to_yuv_R(const RGBPixel &rgb,
+                                      const ColorStandard &standard,
+                                      const ColorRange &range)
 {
-    auto m = getRGB2YUV(standard);
+    Coeff c = getCoeff(standard);
 
-    float y = m[0][0] * rgb.r + m[0][1] * rgb.g + m[0][2] * rgb.b;
-    float u = m[1][0] * rgb.r + m[1][1] * rgb.g + m[1][2] * rgb.b + 128.0f;
-    float v = m[2][0] * rgb.r + m[2][1] * rgb.g + m[2][2] * rgb.b + 128.0f;
+    float R = rgb.r;
+    float G = rgb.g;
+    float B = rgb.b;
 
-    return {Utils::clamp(y), Utils::clamp(u), Utils::clamp(v)};
-}
+    float Yf = c.Kr * R + c.Kg * G + c.Kb * B;
 
-RGBPixel ColorConvertor::yuv_to_rgb(const YUVPixel &yuv,
-                                    const ColorStandard &standard)
-{
-    auto m = getYUV2RGB(standard);
+    float Cb = (B - Yf) / (2.0f * (1.0f - c.Kb));
+    float Cr = (R - Yf) / (2.0f * (1.0f - c.Kr));
 
-    float u = yuv.u - 128.0f;
-    float v = yuv.v - 128.0f;
+    float Y, U, V;
 
-    float r = m[0][0] * yuv.y + m[0][1] * u + m[0][2] * v;
-    float g = m[1][0] * yuv.y + m[1][1] * u + m[1][2] * v;
-    float b = m[2][0] * yuv.y + m[2][1] * u + m[2][2] * v;
-
-    return {Utils::clamp(r), Utils::clamp(g), Utils::clamp(b)};
-}
-
-// ================= YUV420P =================
-
-YUV420pImage ColorConvertor::rgbImg_to_yuv420pImg(
-    const RGBImage &rgb, const ColorStandard &standard)
-{
-
-    YUV420pImage out;
-    int w = rgb.width;
-    int h = rgb.height;
-
-    out.width = w;
-    out.height = h;
-
-    out.yPlane.resize(w * h);
-    out.uPlane.resize(w * h / 4);
-    out.vPlane.resize(w * h / 4);
-
-    for (int j = 0; j < h; j++)
+    if (range == ColorRange::FULL)
     {
-        for (int i = 0; i < w; i++)
-        {
-            int idx = (j * w + i) * 3;
-            RGBPixel p{rgb.data[idx], rgb.data[idx + 1], rgb.data[idx + 2]};
-            auto yuv = rgb_to_yuv(p, standard);
-
-            out.yPlane[j * w + i] = yuv.y;
-
-            if (j % 2 == 0 && i % 2 == 0)
-            {
-                int uv_idx = (j / 2) * (w / 2) + (i / 2);
-                out.uPlane[uv_idx] = yuv.u;
-                out.vPlane[uv_idx] = yuv.v;
-            }
-        }
+        Y = Yf;
+        U = Cb + 128.0f;
+        V = Cr + 128.0f;
     }
-    return out;
+    else
+    {
+        // limited range
+        Y = Yf * (219.0f / 255.0f) + 16.0f;
+        U = Cb * (224.0f / 255.0f) + 128.0f;
+        V = Cr * (224.0f / 255.0f) + 128.0f;
+    }
+
+    return {
+        Utils::clamp(Y),
+        Utils::clamp(U),
+        Utils::clamp(V)};
 }
 
-RGBImage ColorConvertor::yuv420pImg_to_rgbImg(
-    const YUV420pImage &yuv, const ColorStandard &standard)
+RGBPixel ColorConvertor::yuv_to_rgb_R(const YUVPixel &yuv,
+                                      const ColorStandard &standard,
+                                      const ColorRange &range)
 {
+    Coeff c = getCoeff(standard);
 
-    RGBImage out;
-    int w = yuv.width;
-    int h = yuv.height;
+    float Y = yuv.y;
+    float U = yuv.u - 128.0f;
+    float V = yuv.v - 128.0f;
 
-    out.width = w;
-    out.height = h;
-    out.data.resize(w * h * 3);
+    float Yf, Cb, Cr;
 
-    for (int j = 0; j < h; j++)
+    if (range == ColorRange::FULL)
     {
-        for (int i = 0; i < w; i++)
-        {
-
-            int y_idx = j * w + i;
-            int uv_idx = (j / 2) * (w / 2) + (i / 2);
-
-            YUVPixel p;
-            p.y = yuv.yPlane[y_idx];
-            p.u = yuv.uPlane[uv_idx];
-            p.v = yuv.vPlane[uv_idx];
-
-            auto rgb = yuv_to_rgb(p, standard);
-
-            int idx = (j * w + i) * 3;
-            out.data[idx] = rgb.r;
-            out.data[idx + 1] = rgb.g;
-            out.data[idx + 2] = rgb.b;
-        }
+        Yf = Y;
+        Cb = U;
+        Cr = V;
     }
-    return out;
-}
-
-// ================= NV12 =================
-
-NV12Image ColorConvertor::rgbImg_to_nv12Img(
-    const RGBImage &rgb, const ColorStandard &standard)
-{
-
-    NV12Image out;
-    int w = rgb.width;
-    int h = rgb.height;
-
-    out.width = w;
-    out.height = h;
-
-    out.yPlane.resize(w * h);
-    out.uvPlane.resize(w * h / 2);
-
-    for (int j = 0; j < h; j++)
+    else
     {
-        for (int i = 0; i < w; i++)
-        {
-            int idx = (j * w + i) * 3;
-            RGBPixel p{rgb.data[idx], rgb.data[idx + 1], rgb.data[idx + 2]};
-            auto yuv = rgb_to_yuv(p, standard);
-
-            out.yPlane[j * w + i] = yuv.y;
-
-            if (j % 2 == 0 && i % 2 == 0)
-            {
-                int uv_idx = (j / 2) * w + i;
-                out.uvPlane[uv_idx] = yuv.u;
-                out.uvPlane[uv_idx + 1] = yuv.v;
-            }
-        }
+        // LIMITED inverse
+        Yf = (Y - 16.0f) * (255.0f / 219.0f);
+        Cb = U * (255.0f / 224.0f);
+        Cr = V * (255.0f / 224.0f);
     }
-    return out;
-}
 
-RGBImage ColorConvertor::nv12Img_to_rgbImg(
-    const NV12Image &nv12, const ColorStandard &standard)
-{
+    float R = Yf + 2.0f * (1.0f - c.Kr) * Cr;
+    float B = Yf + 2.0f * (1.0f - c.Kb) * Cb;
+    float G = (Yf - c.Kr * R - c.Kb * B) / c.Kg;
 
-    RGBImage out;
-    int w = nv12.width;
-    int h = nv12.height;
-
-    out.width = w;
-    out.height = h;
-    out.data.resize(w * h * 3);
-
-    for (int j = 0; j < h; j++)
-    {
-        for (int i = 0; i < w; i++)
-        {
-
-            int y_idx = j * w + i;
-            int uv_idx = (j / 2) * w + (i & ~1);
-
-            YUVPixel p;
-            p.y = nv12.yPlane[y_idx];
-            p.u = nv12.uvPlane[uv_idx];
-            p.v = nv12.uvPlane[uv_idx + 1];
-
-            auto rgb = yuv_to_rgb(p, standard);
-
-            int idx = (j * w + i) * 3;
-            out.data[idx] = rgb.r;
-            out.data[idx + 1] = rgb.g;
-            out.data[idx + 2] = rgb.b;
-        }
-    }
-    return out;
-}
-
-// ================= NV21 =================
-
-NV21Image ColorConvertor::rgbImg_to_nv21Img(
-    const RGBImage &rgb, const ColorStandard &standard)
-{
-
-    NV21Image out;
-    int w = rgb.width;
-    int h = rgb.height;
-
-    out.width = w;
-    out.height = h;
-
-    out.yPlane.resize(w * h);
-    out.vuPlane.resize(w * h / 2);
-
-    for (int j = 0; j < h; j++)
-    {
-        for (int i = 0; i < w; i++)
-        {
-            int idx = (j * w + i) * 3;
-            RGBPixel p{rgb.data[idx], rgb.data[idx + 1], rgb.data[idx + 2]};
-            auto yuv = rgb_to_yuv(p, standard);
-
-            out.yPlane[j * w + i] = yuv.y;
-
-            if (j % 2 == 0 && i % 2 == 0)
-            {
-                int uv_idx = (j / 2) * w + i;
-                out.vuPlane[uv_idx] = yuv.v;
-                out.vuPlane[uv_idx + 1] = yuv.u;
-            }
-        }
-    }
-    return out;
-}
-
-RGBImage ColorConvertor::nv21Img_to_rgbImg(
-    const NV21Image &nv21, const ColorStandard &standard)
-{
-
-    RGBImage out;
-    int w = nv21.width;
-    int h = nv21.height;
-
-    out.width = w;
-    out.height = h;
-    out.data.resize(w * h * 3);
-
-    for (int j = 0; j < h; j++)
-    {
-        for (int i = 0; i < w; i++)
-        {
-
-            int y_idx = j * w + i;
-            int uv_idx = (j / 2) * w + (i & ~1);
-
-            YUVPixel p;
-            p.y = nv21.yPlane[y_idx];
-            p.v = nv21.vuPlane[uv_idx];
-            p.u = nv21.vuPlane[uv_idx + 1];
-
-            auto rgb = yuv_to_rgb(p, standard);
-
-            int idx = (j * w + i) * 3;
-            out.data[idx] = rgb.r;
-            out.data[idx + 1] = rgb.g;
-            out.data[idx + 2] = rgb.b;
-        }
-    }
-    return out;
-}
-
-// ================= YUV422P =================
-YUV422pImage ColorConvertor::rgbImg_to_yuv422pImg(
-    const RGBImage &rgb, const ColorStandard &standard)
-{
-
-    YUV422pImage out;
-    int w = rgb.width;
-    int h = rgb.height;
-
-    out.width = w;
-    out.height = h;
-
-    out.yPlane.resize(w * h);
-    out.uPlane.resize(w * h / 2);
-    out.vPlane.resize(w * h / 2);
-
-    for (int j = 0; j < h; j++)
-    {
-        for (int i = 0; i < w; i++)
-        {
-
-            int idx = (j * w + i) * 3;
-            RGBPixel p{rgb.data[idx], rgb.data[idx + 1], rgb.data[idx + 2]};
-            auto yuv = rgb_to_yuv(p, standard);
-
-            int y_idx = j * w + i;
-            out.yPlane[y_idx] = yuv.y;
-
-            // subsample theo chiều ngang
-            if (i % 2 == 0)
-            {
-                int uv_idx = j * (w / 2) + (i / 2);
-                out.uPlane[uv_idx] = yuv.u;
-                out.vPlane[uv_idx] = yuv.v;
-            }
-        }
-    }
-    return out;
-}
-
-RGBImage ColorConvertor::yuv422pImg_to_rgbImg(
-    const YUV422pImage &yuv, const ColorStandard &standard)
-{
-
-    RGBImage out;
-    int w = yuv.width;
-    int h = yuv.height;
-
-    out.width = w;
-    out.height = h;
-    out.data.resize(w * h * 3);
-
-    for (int j = 0; j < h; j++)
-    {
-        for (int i = 0; i < w; i++)
-        {
-
-            int y_idx = j * w + i;
-            int uv_idx = j * (w / 2) + (i / 2);
-
-            YUVPixel p;
-            p.y = yuv.yPlane[y_idx];
-            p.u = yuv.uPlane[uv_idx];
-            p.v = yuv.vPlane[uv_idx];
-
-            auto rgb = yuv_to_rgb(p, standard);
-
-            int idx = y_idx * 3;
-            out.data[idx] = rgb.r;
-            out.data[idx + 1] = rgb.g;
-            out.data[idx + 2] = rgb.b;
-        }
-    }
-    return out;
+    return {
+        Utils::clamp(R),
+        Utils::clamp(G),
+        Utils::clamp(B)};
 }
 
 // ================= YUV444P =================
-YUV444pImage ColorConvertor::rgbImg_to_yuv444pImg(
-    const RGBImage &rgb, const ColorStandard &standard)
+YUV444pImage ColorConvertor::rgbImg_to_yuv444pImg_R(
+    const RGBImage &rgb,
+    const ColorStandard &standard,
+    const ColorRange &range)
 {
+    int width = rgb.width;
+    int height = rgb.height;
+    int size = width * height;
 
-    YUV444pImage out;
-    int w = rgb.width;
-    int h = rgb.height;
+    YUV444pImage yuv;
+    yuv.width = width;
+    yuv.height = height;
 
+    yuv.yPlane.resize(size);
+    yuv.uPlane.resize(size);
+    yuv.vPlane.resize(size);
+
+    for (int i = 0; i < size; i++)
+    {
+        RGBPixel pixel{
+            rgb.data[3 * i + 0],
+            rgb.data[3 * i + 1],
+            rgb.data[3 * i + 2]};
+
+        // ✅ dùng lại pixel function
+        YUVPixel yuvPixel = rgb_to_yuv_R(pixel, standard, range);
+
+        yuv.yPlane[i] = yuvPixel.y;
+        yuv.uPlane[i] = yuvPixel.u;
+        yuv.vPlane[i] = yuvPixel.v;
+    }
+
+    return yuv;
+}
+
+RGBImage ColorConvertor::yuv444pImg_to_rgbImg_R(
+    const YUV444pImage &yuv,
+    const ColorStandard &standard,
+    const ColorRange &range)
+{
+    int width = yuv.width;
+    int height = yuv.height;
+    int size = width * height;
+
+    RGBImage rgb;
+    rgb.width = width;
+    rgb.height = height;
+    rgb.data.resize(size * 3);
+
+    for (int i = 0; i < size; i++)
+    {
+        YUVPixel yuvPixel{
+            yuv.yPlane[i],
+            yuv.uPlane[i],
+            yuv.vPlane[i]};
+
+        // ✅ dùng lại pixel function
+        RGBPixel pixel = yuv_to_rgb_R(yuvPixel, standard, range);
+
+        rgb.data[3 * i + 0] = pixel.r;
+        rgb.data[3 * i + 1] = pixel.g;
+        rgb.data[3 * i + 2] = pixel.b;
+    }
+
+    return rgb;
+}
+
+YUV420pImage ColorConvertor::rgbImg_to_yuv420pImg_R(const RGBImage &rgbImage, const ColorStandard &standard, const ColorRange &range)
+{
+    // 1. RGB -> YUV444
+    YUV444pImage yuv444 = rgbImg_to_yuv444pImg_R(rgbImage, standard, range);
+
+    // 2. Downsample -> 420
+    return yuv444_to_yuv420p(yuv444);
+}
+RGBImage ColorConvertor::yuv420pImg_to_rgbImg_R(const YUV420pImage &yuvImage, const ColorStandard &standard, const ColorRange &range)
+{
+    YUV444pImage yuv444 = yuv420p_to_yuv444(yuvImage);
+    return yuv444pImg_to_rgbImg_R(yuv444, standard, range);
+}
+
+NV12Image ColorConvertor::rgbImg_to_nv12Img_R(const RGBImage &rgbImage, const ColorStandard &standard, const ColorRange &range)
+{
+    YUV444pImage yuv444 = rgbImg_to_yuv444pImg_R(rgbImage, standard, range);
+    return yuv444_to_nv12(yuv444);
+}
+RGBImage ColorConvertor::nv12Img_to_rgbImg_R(const NV12Image &yuvImage, const ColorStandard &standard, const ColorRange &range)
+{
+    YUV444pImage yuv444 = nv12_to_yuv444(yuvImage);
+    return yuv444pImg_to_rgbImg_R(yuv444, standard, range);
+}
+
+NV21Image ColorConvertor::rgbImg_to_nv21Img_R(const RGBImage &rgbImage, const ColorStandard &standard, const ColorRange &range)
+{
+    YUV444pImage yuv444 = rgbImg_to_yuv444pImg_R(rgbImage, standard, range);
+    return yuv444_to_nv21(yuv444);
+}
+RGBImage ColorConvertor::nv21Img_to_rgbImg_R(const NV21Image &yuvImage, const ColorStandard &standard, const ColorRange &range)
+{
+    YUV444pImage yuv444 = nv21_to_yuv444(yuvImage);
+    return yuv444pImg_to_rgbImg_R(yuv444, standard, range);
+}
+
+YUV422pImage ColorConvertor::rgbImg_to_yuv422pImg_R(const RGBImage &rgbImage, const ColorStandard &standard, const ColorRange &range)
+{
+    YUV444pImage yuv444 = rgbImg_to_yuv444pImg_R(rgbImage, standard, range);
+    return yuv444_to_yuv422p(yuv444);
+}
+RGBImage ColorConvertor::yuv422pImg_to_rgbImg_R(const YUV422pImage &yuvImage, const ColorStandard &standard, const ColorRange &range){
+    YUV444pImage yuv444 = yuv422p_to_yuv444(yuvImage);
+    return yuv444pImg_to_rgbImg_R(yuv444, standard, range);
+}
+
+YUV420pImage ColorConvertor::yuv444_to_yuv420p(const YUV444pImage &in)
+{
+    int w = in.width;
+    int h = in.height;
+
+    YUV420pImage out;
     out.width = w;
     out.height = h;
 
-    out.yPlane.resize(w * h);
+    out.yPlane = in.yPlane; // giữ nguyên
+
+    int w2 = w / 2;
+    int h2 = h / 2;
+
+    out.uPlane.resize(w2 * h2);
+    out.vPlane.resize(w2 * h2);
+
+    for (int j = 0; j < h2; j++)
+    {
+        for (int i = 0; i < w2; i++)
+        {
+            int x = i * 2;
+            int y = j * 2;
+
+            int idx0 = y * w + x;
+            int idx1 = idx0 + 1;
+            int idx2 = idx0 + w;
+            int idx3 = idx2 + 1;
+
+            int u_avg = (in.uPlane[idx0] + in.uPlane[idx1] + in.uPlane[idx2] + in.uPlane[idx3]) / 4;
+            int v_avg = (in.vPlane[idx0] + in.vPlane[idx1] + in.vPlane[idx2] + in.vPlane[idx3]) / 4;
+
+            out.uPlane[j * w2 + i] = u_avg;
+            out.vPlane[j * w2 + i] = v_avg;
+        }
+    }
+
+    return out;
+}
+
+YUV444pImage ColorConvertor::yuv420p_to_yuv444(const YUV420pImage &in)
+{
+    int w = in.width;
+    int h = in.height;
+
+    YUV444pImage out;
+    out.width = w;
+    out.height = h;
+
+    out.yPlane = in.yPlane;
+
+    out.uPlane.resize(w * h);
+    out.vPlane.resize(w * h);
+
+    int w2 = w / 2;
+
+    for (int j = 0; j < h; j++)
+    {
+        for (int i = 0; i < w; i++)
+        {
+            int u_idx = (j / 2) * w2 + (i / 2);
+
+            out.uPlane[j * w + i] = in.uPlane[u_idx];
+            out.vPlane[j * w + i] = in.vPlane[u_idx];
+        }
+    }
+
+    return out;
+}
+
+NV12Image ColorConvertor::yuv444_to_nv12(const YUV444pImage &in)
+{
+    int w = in.width;
+    int h = in.height;
+
+    NV12Image out;
+    out.width = w;
+    out.height = h;
+
+    out.yPlane = in.yPlane;
+
+    int w2 = w / 2;
+    int h2 = h / 2;
+
+    out.uvPlane.resize(w * h / 2);
+
+    for (int j = 0; j < h2; j++)
+    {
+        for (int i = 0; i < w2; i++)
+        {
+            int x = i * 2;
+            int y = j * 2;
+
+            int idx0 = y * w + x;
+            int idx1 = idx0 + 1;
+            int idx2 = idx0 + w;
+            int idx3 = idx2 + 1;
+
+            int u = (in.uPlane[idx0] + in.uPlane[idx1] + in.uPlane[idx2] + in.uPlane[idx3]) / 4;
+            int v = (in.vPlane[idx0] + in.vPlane[idx1] + in.vPlane[idx2] + in.vPlane[idx3]) / 4;
+
+            int uv_idx = (j * w + i * 2);
+            out.uvPlane[uv_idx] = u;
+            out.uvPlane[uv_idx + 1] = v;
+        }
+    }
+
+    return out;
+}
+
+YUV444pImage ColorConvertor::nv12_to_yuv444(const NV12Image &in)
+{
+    int w = in.width;
+    int h = in.height;
+
+    YUV444pImage out;
+    out.width = w;
+    out.height = h;
+
+    out.yPlane = in.yPlane;
     out.uPlane.resize(w * h);
     out.vPlane.resize(w * h);
 
@@ -386,52 +319,129 @@ YUV444pImage ColorConvertor::rgbImg_to_yuv444pImg(
     {
         for (int i = 0; i < w; i++)
         {
+            int uv_idx = (j / 2) * w + (i & ~1);
 
-            int idx = (j * w + i) * 3;
-            RGBPixel p{rgb.data[idx], rgb.data[idx + 1], rgb.data[idx + 2]};
-
-            auto yuv = rgb_to_yuv(p, standard);
-
-            int pos = j * w + i;
-            out.yPlane[pos] = yuv.y;
-            out.uPlane[pos] = yuv.u;
-            out.vPlane[pos] = yuv.v;
+            out.uPlane[j * w + i] = in.uvPlane[uv_idx];
+            out.vPlane[j * w + i] = in.uvPlane[uv_idx + 1];
         }
     }
+
     return out;
 }
 
-RGBImage ColorConvertor::yuv444pImg_to_rgbImg(
-    const YUV444pImage &yuv, const ColorStandard &standard)
+NV21Image ColorConvertor::yuv444_to_nv21(const YUV444pImage &in)
 {
+    NV21Image out;
+    out.width = in.width;
+    out.height = in.height;
 
-    RGBImage out;
-    int w = yuv.width;
-    int h = yuv.height;
+    out.yPlane = in.yPlane;
+    out.vuPlane.resize(in.width * in.height / 2);
 
+    int w = in.width;
+    int h = in.height;
+
+    for (int j = 0; j < h / 2; j++)
+    {
+        for (int i = 0; i < w / 2; i++)
+        {
+            int x = i * 2, y = j * 2;
+
+            int idx = y * w + x;
+
+            int u = (in.uPlane[idx] + in.uPlane[idx + 1] + in.uPlane[idx + w] + in.uPlane[idx + w + 1]) / 4;
+            int v = (in.vPlane[idx] + in.vPlane[idx + 1] + in.vPlane[idx + w] + in.vPlane[idx + w + 1]) / 4;
+
+            int pos = j * w + i * 2;
+            out.vuPlane[pos] = v;
+            out.vuPlane[pos + 1] = u;
+        }
+    }
+
+    return out;
+}
+
+YUV444pImage ColorConvertor::nv21_to_yuv444(const NV21Image &in)
+{
+    int w = in.width;
+    int h = in.height;
+
+    YUV444pImage out;
     out.width = w;
     out.height = h;
-    out.data.resize(w * h * 3);
+
+    out.yPlane = in.yPlane;
+    out.uPlane.resize(w * h);
+    out.vPlane.resize(w * h);
 
     for (int j = 0; j < h; j++)
     {
         for (int i = 0; i < w; i++)
         {
+            int uv_idx = (j / 2) * w + (i & ~1);
 
-            int pos = j * w + i;
-
-            YUVPixel p;
-            p.y = yuv.yPlane[pos];
-            p.u = yuv.uPlane[pos];
-            p.v = yuv.vPlane[pos];
-
-            auto rgb = yuv_to_rgb(p, standard);
-
-            int idx = pos * 3;
-            out.data[idx] = rgb.r;
-            out.data[idx + 1] = rgb.g;
-            out.data[idx + 2] = rgb.b;
+            out.uPlane[j * w + i] = in.vuPlane[uv_idx];
+            out.vPlane[j * w + i] = in.vuPlane[uv_idx + 1];
         }
     }
+
+    return out;
+}
+
+YUV422pImage ColorConvertor::yuv444_to_yuv422p(const YUV444pImage &in)
+{
+    int w = in.width;
+    int h = in.height;
+
+    YUV422pImage out;
+    out.width = w;
+    out.height = h;
+
+    out.yPlane = in.yPlane;
+
+    out.uPlane.resize((w / 2) * h);
+    out.vPlane.resize((w / 2) * h);
+
+    for (int j = 0; j < h; j++)
+    {
+        for (int i = 0; i < w / 2; i++)
+        {
+            int x = i * 2;
+
+            int idx0 = j * w + x;
+            int idx1 = idx0 + 1;
+
+            out.uPlane[j * (w / 2) + i] = (in.uPlane[idx0] + in.uPlane[idx1]) / 2;
+            out.vPlane[j * (w / 2) + i] = (in.vPlane[idx0] + in.vPlane[idx1]) / 2;
+        }
+    }
+
+    return out;
+}
+
+YUV444pImage ColorConvertor::yuv422p_to_yuv444(const YUV422pImage &in)
+{
+    int w = in.width;
+    int h = in.height;
+
+    YUV444pImage out;
+    out.width = w;
+    out.height = h;
+
+    out.yPlane = in.yPlane;
+    out.uPlane.resize(w * h);
+    out.vPlane.resize(w * h);
+
+    for (int j = 0; j < h; j++)
+    {
+        for (int i = 0; i < w; i++)
+        {
+            int src_idx = j * (w / 2) + (i / 2);
+
+            out.uPlane[j * w + i] = in.uPlane[src_idx];
+            out.vPlane[j * w + i] = in.vPlane[src_idx];
+        }
+    }
+
     return out;
 }

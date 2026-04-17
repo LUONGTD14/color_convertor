@@ -2,6 +2,7 @@
 #define COLOR_CONVERTOR_H
 
 #include "constant.h"
+
 #include <vector>
 
 struct RGBPixel
@@ -74,23 +75,36 @@ public:
     ColorConvertor() = default;
     ~ColorConvertor() = default;
 
-    YUVPixel rgb_to_yuv(const RGBPixel &rgb, const ColorStandard &standard);
-    RGBPixel yuv_to_rgb(const YUVPixel &yuv, const ColorStandard &standard);
+    static YUVPixel rgb_to_yuv_R(const RGBPixel &rgb, const ColorStandard &standard, const ColorRange &range);
+    static RGBPixel yuv_to_rgb_R(const YUVPixel &yuv, const ColorStandard &standard, const ColorRange &range);
 
-    YUV420pImage rgbImg_to_yuv420pImg(const RGBImage &rgbImage, const ColorStandard &standard);
-    RGBImage yuv420pImg_to_rgbImg(const YUV420pImage &yuvImage, const ColorStandard &standard);
+    static YUV444pImage rgbImg_to_yuv444pImg_R(const RGBImage &rgbImage, const ColorStandard &standard, const ColorRange &range);
+    static RGBImage yuv444pImg_to_rgbImg_R(const YUV444pImage &yuvImage, const ColorStandard &standard, const ColorRange &range);
 
-    NV12Image rgbImg_to_nv12Img(const RGBImage &rgbImage, const ColorStandard &standard);
-    RGBImage nv12Img_to_rgbImg(const NV12Image &nv12Image, const ColorStandard &standard);
+    static YUV420pImage rgbImg_to_yuv420pImg_R(const RGBImage &rgbImage, const ColorStandard &standard, const ColorRange &range);
+    static RGBImage yuv420pImg_to_rgbImg_R(const YUV420pImage &yuvImage, const ColorStandard &standard, const ColorRange &range);
 
-    NV21Image rgbImg_to_nv21Img(const RGBImage &rgbImage, const ColorStandard &standard);
-    RGBImage nv21Img_to_rgbImg(const NV21Image &nv21Image, const ColorStandard &standard);
+    static NV12Image rgbImg_to_nv12Img_R(const RGBImage &rgbImage, const ColorStandard &standard, const ColorRange &range);
+    static RGBImage nv12Img_to_rgbImg_R(const NV12Image &yuvImage, const ColorStandard &standard, const ColorRange &range);
 
-    YUV422pImage rgbImg_to_yuv422pImg(const RGBImage &rgbImage, const ColorStandard &standard);
-    RGBImage yuv422pImg_to_rgbImg(const YUV422pImage &yuvImage, const ColorStandard &standard);
+    static NV21Image rgbImg_to_nv21Img_R(const RGBImage &rgbImage, const ColorStandard &standard, const ColorRange &range);
+    static RGBImage nv21Img_to_rgbImg_R(const NV21Image &yuvImage, const ColorStandard &standard, const ColorRange &range);
 
-    YUV444pImage rgbImg_to_yuv444pImg(const RGBImage &rgbImage, const ColorStandard &standard);
-    RGBImage yuv444pImg_to_rgbImg(const YUV444pImage &yuvImage, const ColorStandard &standard);
+    static YUV422pImage rgbImg_to_yuv422pImg_R(const RGBImage &rgbImage, const ColorStandard &standard, const ColorRange &range);
+    static RGBImage yuv422pImg_to_rgbImg_R(const YUV422pImage &yuvImage, const ColorStandard &standard, const ColorRange &range);
+
+    // =========== DOWNSAMPLE/UPSAMPLE ==============
+    static YUV420pImage yuv444_to_yuv420p(const YUV444pImage &in);
+    static YUV444pImage yuv420p_to_yuv444(const YUV420pImage &in);
+
+    static NV12Image yuv444_to_nv12(const YUV444pImage &in);
+    static YUV444pImage nv12_to_yuv444(const NV12Image &in);
+
+    static NV21Image yuv444_to_nv21(const YUV444pImage &in);
+    static YUV444pImage nv21_to_yuv444(const NV21Image &in);
+
+    static YUV422pImage yuv444_to_yuv422p(const YUV444pImage &in);
+    static YUV444pImage yuv422p_to_yuv444(const YUV422pImage &in);
 };
 
 #endif

@@ -2,6 +2,7 @@
 #define FILE_LOADER_H
 
 #include "color_convertor.h"
+
 #include <vector>
 #include <string>
 
@@ -17,6 +18,9 @@ public:
     bool loadRGBImage(const std::string &filename, RGBImage &image, int width, int height);
     bool saveRGBImage(const std::string &filename, const RGBImage &image);
 
+    bool loadYUV444pImage(const std::string &filename, YUV444pImage &image, int width, int height);
+    bool saveYUV444pImage(const std::string &filename, const YUV444pImage &image);
+
     bool loadYUV420pImage(const std::string &filename, YUV420pImage &image, int width, int height);
     bool saveYUV420pImage(const std::string &filename, const YUV420pImage &image);
 
@@ -28,9 +32,6 @@ public:
 
     bool loadYUV422pImage(const std::string &filename, YUV422pImage &image, int width, int height);
     bool saveYUV422pImage(const std::string &filename, const YUV422pImage &image);
-
-    bool loadYUV444pImage(const std::string &filename, YUV444pImage &image, int width, int height);
-    bool saveYUV444pImage(const std::string &filename, const YUV444pImage &image);
 };
 
 #endif

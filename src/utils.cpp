@@ -1,4 +1,5 @@
 #include "../include/utils.h"
+#include <math.h>
 
 uint8_t Utils::clamp(float v)
 {
@@ -6,7 +7,7 @@ uint8_t Utils::clamp(float v)
         return 0;
     if (v > 255)
         return 255;
-    return static_cast<uint8_t>(v);
+    return static_cast<uint8_t>(round(v));
 }
 
 PixelFormat Utils::getPixelFormatFromString(const std::string &s)
@@ -35,4 +36,13 @@ ColorStandard Utils::getColorStandardFromString(const std::string &s)
     if (s == "bt2020")
         return ColorStandard::BT2020;
     throw std::runtime_error("Unknown color standard");
+}
+
+ColorRange Utils::getColorRangeFromString(const std::string &r)
+{
+    if (r == "limited")
+        return ColorRange::LIMITED;
+    if (r == "full")
+        return ColorRange::FULL;
+    throw std::runtime_error("Unknown color range");
 }

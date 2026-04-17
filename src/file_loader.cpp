@@ -1,6 +1,7 @@
 #include "../include/file_loader.h"
 #include "../include/color_convertor.h"
 #include "../include/utils.h"
+
 #include <iostream>
 #include <stdexcept>
 #include <fstream>
@@ -39,6 +40,39 @@ bool FileLoader::saveRGBImage(const std::string &filename,
                               const RGBImage &img)
 {
     return writeRawFile(filename, img.data);
+}
+
+// ================= YUV444P =================
+bool FileLoader::loadYUV444pImage(const std::string &filename,
+                                  YUV444pImage &img, int w, int h)
+{
+
+    img.width = w;
+    img.height = h;
+
+    size_t size = w * h;
+
+    std::vector<uint8_t> buffer;
+    if (!readRawFile(filename, buffer, size * 3))
+        return false;
+
+    img.yPlane.assign(buffer.begin(), buffer.begin() + size);
+    img.uPlane.assign(buffer.begin() + size, buffer.begin() + 2 * size);
+    img.vPlane.assign(buffer.begin() + 2 * size, buffer.end());
+
+    return true;
+}
+
+bool FileLoader::saveYUV444pImage(const std::string &filename,
+                                  const YUV444pImage &img)
+{
+
+    std::vector<uint8_t> buffer;
+    buffer.insert(buffer.end(), img.yPlane.begin(), img.yPlane.end());
+    buffer.insert(buffer.end(), img.uPlane.begin(), img.uPlane.end());
+    buffer.insert(buffer.end(), img.vPlane.begin(), img.vPlane.end());
+
+    return writeRawFile(filename, buffer);
 }
 
 // ================= YUV420P =================
@@ -162,39 +196,6 @@ bool FileLoader::loadYUV422pImage(const std::string &filename,
 
 bool FileLoader::saveYUV422pImage(const std::string &filename,
                                   const YUV422pImage &img)
-{
-
-    std::vector<uint8_t> buffer;
-    buffer.insert(buffer.end(), img.yPlane.begin(), img.yPlane.end());
-    buffer.insert(buffer.end(), img.uPlane.begin(), img.uPlane.end());
-    buffer.insert(buffer.end(), img.vPlane.begin(), img.vPlane.end());
-
-    return writeRawFile(filename, buffer);
-}
-
-// ================= YUV444P =================
-bool FileLoader::loadYUV444pImage(const std::string &filename,
-                                  YUV444pImage &img, int w, int h)
-{
-
-    img.width = w;
-    img.height = h;
-
-    size_t size = w * h;
-
-    std::vector<uint8_t> buffer;
-    if (!readRawFile(filename, buffer, size * 3))
-        return false;
-
-    img.yPlane.assign(buffer.begin(), buffer.begin() + size);
-    img.uPlane.assign(buffer.begin() + size, buffer.begin() + 2 * size);
-    img.vPlane.assign(buffer.begin() + 2 * size, buffer.end());
-
-    return true;
-}
-
-bool FileLoader::saveYUV444pImage(const std::string &filename,
-                                  const YUV444pImage &img)
 {
 
     std::vector<uint8_t> buffer;
