@@ -2,6 +2,7 @@
 #define COLOR_CONVERTOR_H
 
 #include "constant.h"
+#include "image.h"
 
 #include <vector>
 
@@ -19,55 +20,7 @@ struct YUVPixel
     uint8_t v;
 };
 
-struct RGBImage
-{
-    int width;
-    int height;
-    std::vector<uint8_t> data;
-};
-
-struct YUV420pImage
-{
-    int width;
-    int height;
-    std::vector<uint8_t> yPlane;
-    std::vector<uint8_t> uPlane;
-    std::vector<uint8_t> vPlane;
-};
-
-struct NV12Image
-{
-    int width;
-    int height;
-    std::vector<uint8_t> yPlane;
-    std::vector<uint8_t> uvPlane; // U và V xen kẽ
-};
-
-struct NV21Image
-{
-    int width;
-    int height;
-    std::vector<uint8_t> yPlane;
-    std::vector<uint8_t> vuPlane; // V và U xen kẽ
-};
-
-struct YUV422pImage
-{
-    int width;
-    int height;
-    std::vector<uint8_t> yPlane;
-    std::vector<uint8_t> uPlane;
-    std::vector<uint8_t> vPlane;
-};
-
-struct YUV444pImage
-{
-    int width;
-    int height;
-    std::vector<uint8_t> yPlane;
-    std::vector<uint8_t> uPlane;
-    std::vector<uint8_t> vPlane;
-};
+class FileLoader;
 
 class ColorConvertor
 {
@@ -105,6 +58,10 @@ public:
 
     static YUV422pImage yuv444_to_yuv422p(const YUV444pImage &in);
     static YUV444pImage yuv422p_to_yuv444(const YUV422pImage &in);
+
+    // ============ MAIN =========
+    YUV444pImage convert_to_444(PixelFormat origin_fmt, const std::string &input_path, int width, int height, FileLoader &fl);
+    void convert_from_444(const YUV444pImage &yuv444, PixelFormat next_fmt, const std::string &output_path, FileLoader &fl);
 };
 
 #endif

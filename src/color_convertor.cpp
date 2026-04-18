@@ -1,5 +1,7 @@
 #include "../include/color_convertor.h"
 #include "../include/utils.h"
+#include "../include/file_loader.h"
+
 #include <fstream>
 #include <cstring>
 
@@ -187,7 +189,8 @@ YUV422pImage ColorConvertor::rgbImg_to_yuv422pImg_R(const RGBImage &rgbImage, co
     YUV444pImage yuv444 = rgbImg_to_yuv444pImg_R(rgbImage, standard, range);
     return yuv444_to_yuv422p(yuv444);
 }
-RGBImage ColorConvertor::yuv422pImg_to_rgbImg_R(const YUV422pImage &yuvImage, const ColorStandard &standard, const ColorRange &range){
+RGBImage ColorConvertor::yuv422pImg_to_rgbImg_R(const YUV422pImage &yuvImage, const ColorStandard &standard, const ColorRange &range)
+{
     YUV444pImage yuv444 = yuv422p_to_yuv444(yuvImage);
     return yuv444pImg_to_rgbImg_R(yuv444, standard, range);
 }
@@ -444,4 +447,82 @@ YUV444pImage ColorConvertor::yuv422p_to_yuv444(const YUV422pImage &in)
     }
 
     return out;
+}
+
+YUV444pImage ColorConvertor::convert_to_444(PixelFormat origin_fmt, const std::string &input_path, int width, int height, FileLoader &fl)
+{
+    if (origin_fmt == PixelFormat::YUV444P)
+    {
+        YUV444pImage yuv;
+        if (!fl.loadYUV444pImage(input_path, yuv, width, height))
+            throw std::runtime_error("Load YUV444 failed");
+        return yuv;
+    }
+    else if (origin_fmt == PixelFormat::YUV420P)
+    {
+        YUV420pImage yuv;
+        if (!fl.loadYUV420pImage(input_path, yuv, width, height))
+            throw std::runtime_error("Load YUV420 failed");
+        return ColorConvertor::yuv420p_to_yuv444(yuv);
+    }
+    else if (origin_fmt == PixelFormat::NV12)
+    {
+        NV12Image yuv;
+        if (!fl.loadNV12Image(input_path, yuv, width, height))
+            throw std::runtime_error("Load NV12 failed");
+        return ColorConvertor::nv12_to_yuv444(yuv);
+    }
+    else if (origin_fmt == PixelFormat::NV21)
+    {
+        NV21Image yuv;
+        if (!fl.loadNV21Image(input_path, yuv, width, height))
+            throw std::runtime_error("Load NV21 failed");
+        return ColorConvertor::nv21_to_yuv444(yuv);
+    }
+    else if (origin_fmt == PixelFormat::YUV422P)
+    {
+        YUV422pImage yuv;
+        if (!fl.loadYUV422pImage(input_path, yuv, width, height))
+            throw std::runtime_error("Load YUV422 failed");
+        return ColorConvertor::yuv422p_to_yuv444(yuv);
+    }
+
+    throw std::runtime_error("Unsupported origin format for to_444");
+}
+
+void ColorConvertor::convert_from_444(const YUV444pImage &yuv444, PixelFormat next_fmt, const std::string &output_path, FileLoader &fl)
+{
+    if (next_fmt == PixelFormat::YUV444P)
+    {
+        if (!fl.saveYUV444pImage(output_path, yuv444))
+            throw std::runtime_error("Save YUV444 failed");
+    }
+    else if (next_fmt == PixelFormat::YUV420P)
+    {
+        YUV420pImage out = ColorConvertor::yuv444_to_yuv420p(yuv444);
+        if (!fl.saveYUV420pImage(output_path, out))
+            throw std::runtime_error("Save YUV420 failed");
+    }
+    else if (next_fmt == PixelFormat::NV12)
+    {
+        NV12Image out = ColorConvertor::yuv444_to_nv12(yuv444);
+        if (!fl.saveNV12Image(output_path, out))
+            throw std::runtime_error("Save NV12 failed");
+    }
+    else if (next_fmt == PixelFormat::NV21)
+    {
+        NV21Image out = ColorConvertor::yuv444_to_nv21(yuv444);
+        if (!fl.saveNV21Image(output_path, out))
+            throw std::runtime_error("Save NV21 failed");
+    }
+    else if (next_fmt == PixelFormat::YUV422P)
+    {
+        YUV422pImage out = ColorConvertor::yuv444_to_yuv422p(yuv444);
+        if (!fl.saveYUV422pImage(output_path, out))
+            throw std::runtime_error("Save YUV422 failed");
+    }
+    else
+    {
+        throw std::runtime_error("Unsupported next format for from_444");
+    }
 }

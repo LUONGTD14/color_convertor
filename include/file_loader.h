@@ -1,7 +1,7 @@
 #ifndef FILE_LOADER_H
 #define FILE_LOADER_H
 
-#include "color_convertor.h"
+#include "image.h"
 
 #include <vector>
 #include <string>
